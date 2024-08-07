@@ -1,29 +1,12 @@
 const http = require("http");
 const fs = require("fs");
-// const url = require("url");
+const url = require("url");
+const querystring = require("querystring");
+const replaceTemplate = require("./modules/replaceTemplate");
+const slugify = require("slugify");
 // đọc dữ liệu từ file data.json
 const data = fs.readFileSync(`${__dirname}/dev-data/data.json`, "utf-8");
-/**
- * hàm thây thế các placeholder trong template html
- * @param {*} temp nhận một template html
- * @param {*} product nhận một đối tượng sản phẩm
- * @returns hàm trả về chuổi đã được thây thế các placeholders bằng các giá trị từ đối tượng sản phẩm
- */
-const replaceTemplate = (temp, product) => {
-  // thây thế các placeholder trong template html thành thuộc tính của đối tượng product
-  let output = temp.replace(/{%PRODUCTNAME%}/g, product.productName);
-  output = output.replace(/{%IMAGE%}/g, product.image);
-  output = output.replace(/{%PRICE%}/g, product.price);
-  output = output.replace(/{%FORM%}/g, product.form);
-  output = output.replace(/{%NUTRIENTS%}/g, product.nutrients);
-  output = output.replace(/{%QUANTITY%}/g, product.quantity);
-  output = output.replace(/{%DESCRIPTION%}/g, product.description);
-  output = output.replace(/{%ID%}/g, product.id);
-  if (!product.organic) {
-    output = output.replace(/{%NOT_ORGANIC%}/g, "not-organic");
-  }
-  return output;
-};
+
 // đọc file templates
 const tempOverview = fs.readFileSync(
   `${__dirname}/templates/template-overview.html`,
@@ -41,9 +24,17 @@ const tempCard = fs.readFileSync(
 // chuyển đổi chuổi JSON sang đối tượng JAVASCRIPT
 const dataObj = JSON.parse(data);
 
+const slugs = dataObj.map((element) => slugify(element.productName,{lower:true}));
+console.log(slugs);
+
 const server = http.createServer(function (req, res) {
-  const pathName = req.url;
-  if (pathName === "/" || pathName === "/overview") {
+  // const pathname = req.url;
+  const { query, pathname } = url.parse(req.url);
+  // const query1 = querystring.parse(query);
+  // const queryParams = Object.assign({}, query1);
+  // console.log(queryParams.id);
+
+  if (pathname === "/" || pathname === "/overview") {
     res.writeHead(200, {
       "Content-type": "text/html",
     });
@@ -64,18 +55,29 @@ const server = http.createServer(function (req, res) {
     /**
      * tempOverview: là chuổi html
      *
-     * replace("{%PRODUCT_CARDS%}", cardsHtml); hàm thay thế placeholder {%PRODUCT_CARDS%} trong template 
+     * replace("{%PRODUCT_CARDS%}", cardsHtml); hàm thay thế placeholder {%PRODUCT_CARDS%} trong template
      * html tempOverview thành cardsHtml
      */
     const output = tempOverview.replace("{%PRODUCT_CARDS%}", cardsHtml);
     res.end(output);
-  } else if (pathName === "/products") {
+  } else if (pathname === "/product") {
     res.writeHead(200, {
       "Content-type": "text/html",
     });
+    // trích xuất query parameters từ URL
+    const query1 = querystring.parse(query);
+    // chuyển đổi đối tượng query sang một đối tượng bình thường
+    const queryParams = Object.assign({}, query1);
+    // truy xuất sản phẩm từ dataObj bằng id
+    const product = dataObj[queryParams.id];
+    // thây thế các placeholder trong template html thành thuộc tính của đối tượng product
+    const output = replaceTemplate(tempProduct, product);
+    // chuyển đổi sang JSON
+    // const testJson = JSON.stringify(product);
+    // console.log(output);
 
-    res.end(tempProduct);
-  } else if (pathName === "/api") {
+    res.end(output);
+  } else if (pathname === "/api") {
     // đọc file data.json
     res.writeHead(200, "Content-Type", "application/json");
     res.end(data);
