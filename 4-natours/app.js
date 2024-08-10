@@ -1,17 +1,26 @@
 const express = require('express');
+const fs = require('fs');
+const morgan = require('morgan');
+const tourRouter = require('./routes/tourRouter');
+const userRouter = require('./routes/userRouter');
 const app = express();
-const port = 100;
+// phần mềm trung gian của express
+app.use(express.json());
 
-app.get('/', (req, res) => {
-  //   res.status(200).send('Welcome to express');
-  res.status(200).json({
-    message: 'Welcome to express',
-    app: 'express',
-  });
+// sử dụng middleware
+app.use(morgan('dev'));
+app.use((req, res, next) => {
+  console.log('Middleware 👋 asdwqe');
+  next();
 });
-app.post('/', (req, res) => {
-  res.status(200).json({ message: 'success', app: 'express' });
+app.use((req, res, next) => {
+  req.requestTime = new Date().toISOString();
+  next();
 });
-app.listen(port, (req, res) => {
-  console.log(`listening on ${port}`);
-});
+
+// Routes
+
+app.use('/api/v1/tours', tourRouter);
+app.use('/api/v1/users', userRouter);
+
+module.exports = app;
