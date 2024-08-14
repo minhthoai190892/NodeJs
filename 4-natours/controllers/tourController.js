@@ -136,27 +136,95 @@ exports.deleteTour = async (req, res) => {
   }
 };
 exports.getTourStats = async (req, res) => {
-  console.log('asdwqe');
-
   try {
-    const stats =await
-      Tour.aggregate([
-        { $match: { ratingsAverage: { $gte: 4.5 } } },
-        {
-          $group: {
-            _id: null,
-            avgRating: { $avg: '$ratingsAverage' },
-            avgPrice: { $avg: '$price' },
-            minPrice: { $min: '$price' },
-            maxPrice: { $max: '$price' },
-          },
-        }
-      ]);
+    /* Hàm aggregate của Mongoose cho phép bạn thực hiện các phép toán 
+     tổng hợp (aggregation) trên các tài liệu trong collection Tour.*/
+    const stats = await Tour.aggregate([
+      // $match: Chỉ lấy các tài liệu có ratingsAverage lớn hơn hoặc bằng 4.5.
+      { $match: { ratingsAverage: { $gte: 4.5 } } },
+      {
+        // $group: Gom nhóm các tài liệu theo difficulty (độ khó của tour), với một số phép toán tổng hợp:
+        $group: {
+          _id: { $toUpper: '$difficulty' },
+          numTours: { $sum: 1 },
+          numRatings: { $sum: '$ratingsQuantity' },
+          avgRating: { $avg: '$ratingsAverage' },
+          avgPrice: { $avg: '$price' },
+          minPrice: { $min: '$price' },
+          maxPrice: { $max: '$price' },
+        },
+      },
+      {
+        // $sort: Sắp xếp các nhóm theo giá trung bình (avgPrice) tăng dần.
+        $sort: { avgPrice: 1 },
+      },
+
+      // {
+      //   // $match: Lọc ra các nhóm có _id khác 'EASY'.
+      //   $match: { _id: { $ne: 'EASY' } } },
+    ]);
     res.status(200).json({
       status: 'success',
 
       data: {
         stats,
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: 'Fali',
+      message: error.message,
+    });
+  }
+};
+
+exports.getMothlyPlan = async (req, res) => {
+  try {
+    // lấy năm từ tham số URL
+    const year = req.params.year;
+    const plan = await Tour.aggregate([
+      { 
+        /* tách mảng [startDates] thành các các tài liệu riêng biệt.
+         Mỗi giá trị trong mảng startDates sẽ tạo ra một tài liệu mới với các trường 
+        giống như tài liệu ban đầu, ngoại trừ startDates sẽ chỉ chứa một giá trị duy nhất từ mảng.
+        */
+        $unwind: '$startDates' 
+      },
+      {
+        $match: {
+          startDates: {
+            $gte: new Date(`${year}-01-01`),
+            $lte: new Date(`${year}-12-31`),
+          },
+        },
+      },
+      {
+        $group: {
+          // nhóm theo tháng
+          _id: { $month: '$startDates' },
+          // đếm số lượng tour có trong tháng đó
+          numTourStarts: { $sum: 1 },
+          tours: { $push: '$name' },
+
+          // itemsSold: { $addToSet: '$name' },
+        },
+      },
+      {
+        $addFields: { month: '$_id' },
+      },
+      {
+        $project: { _id: 0 },
+      },
+      {
+        $sort: { numTourStarts: -1 },
+      },
+      { $limit: 12 },
+    ]);
+    res.status(200).json({
+      status: 'success',
+
+      data: {
+        plan: plan,
       },
     });
   } catch (error) {
