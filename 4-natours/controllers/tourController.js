@@ -2,6 +2,8 @@
 const fs = require('fs');
 const Tour = require('../models/tourModel');
 const APIFeature = require('../utils/apiFeature');
+const catchAsync = require('../utils/catchAsync');
+const AppError = require('../utils/appError');
 
 exports.aliasTopTours = (req, res, next) => {
   // số lượng hiển thị
@@ -13,182 +15,149 @@ exports.aliasTopTours = (req, res, next) => {
   next();
 };
 
-exports.getAllTours = async (req, res) => {
-  try {
-    //  query
-    const feature = new APIFeature(Tour.find(), req.query)
-      .filter()
-      .sort()
-      .limitFields()
-      .paginate();
+exports.getAllTours = catchAsync(async (req, res) => {
+  const feature = new APIFeature(Tour.find(), req.query)
+    .filter()
+    .sort()
+    .limitFields()
+    .paginate();
 
-    const tours = await feature.query;
-    // send response
-    res.status(200).json({
-      status: 'success',
-      result: tours.length,
-      requestTime: req.requestTime,
+  const tours = await feature.query;
+  // send response
+  res.status(200).json({
+    status: 'success',
+    result: tours.length,
+    requestTime: req.requestTime,
 
-      data: {
-        tours: tours,
-      },
-    });
-  } catch (error) {
-    res.status(404).json({
-      status: 'Fail',
-      message: error.message,
-    });
-  }
-};
-exports.createTour = async (req, res) => {
-  try {
-    const newTour = await Tour.create(req.body);
+    data: {
+      tours: tours,
+    },
+  });
+});
+
+exports.createTour = catchAsync(async (req, res, next) => {
+  const newTour = await Tour.create(req.body);
+  res.status(201).json({
+    status: 'success',
+    data: {
+      tour: newTour,
+    },
+  });
+
+  // !làm việc với file json
+  /**
+ * 
+// lấy id
+const newId = tours[tours.length - 1].id + 1;
+//   hợp nhất 2 đối tượng lại với nhau
+const newTour = Object.assign({ id: newId }, req.body);
+//   thêm tour vào mảng
+tours.push(newTour);
+//   ghi lại tất cả các tour vào file
+//!    JSON.stringify(tours), chuyển đổi đối tượng trong mảng sang JSON
+fs.writeFile(
+  './dev-data/data/tours-simple.json',
+  JSON.stringify(tours),
+  (error) => {
+    // status(201): created - yêu cầu đã tạo mới thành công
     res.status(201).json({
       status: 'success',
       data: {
         tour: newTour,
       },
     });
-  } catch (error) {
-    res.status(400).json({
-      status: 'Fali',
-      message: error.message,
-    });
   }
-
-  // !làm việc với file json
-  /**
-   * 
-  // lấy id
-  const newId = tours[tours.length - 1].id + 1;
-  //   hợp nhất 2 đối tượng lại với nhau
-  const newTour = Object.assign({ id: newId }, req.body);
-  //   thêm tour vào mảng
-  tours.push(newTour);
-  //   ghi lại tất cả các tour vào file
-  //!    JSON.stringify(tours), chuyển đổi đối tượng trong mảng sang JSON
-  fs.writeFile(
-    './dev-data/data/tours-simple.json',
-    JSON.stringify(tours),
-    (error) => {
-      // status(201): created - yêu cầu đã tạo mới thành công
-      res.status(201).json({
-        status: 'success',
-        data: {
-          tour: newTour,
-        },
-      });
-    }
-  );
-   */
-};
-exports.getTour = async (req, res) => {
-  try {
-    const tour = await Tour.findById(req.params.id);
-    res.status(200).json({
-      status: 'success',
-
-      data: {
-        tours: tour,
-      },
-    });
-  } catch (error) {
-    res.status(400).json({
-      status: 'Fali',
-      message: error.message,
-    });
+);
+ */
+});
+exports.getTour = catchAsync(async (req, res,next) => {
+  const tour = await Tour.findById(req.params.id);
+  if (!tour){
+    return next(new AppError('No tour found with that ID',404));
   }
-};
-exports.updateTour = async (req, res) => {
-  try {
-    const tour = await Tour.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    });
-    res.status(200).json({
-      status: 'success',
+  res.status(200).json({
+    status: 'success',
 
-      data: {
-        tours: tour,
-      },
-    });
-  } catch (error) {
-    res.status(400).json({
-      status: 'Fali',
-      message: error.message,
-    });
+    data: {
+      tours: tour,
+    },
+  });
+});
+exports.updateTour = catchAsync(async (req, res,next) => {
+  const tour = await Tour.findByIdAndUpdate(req.params.id, req.body, {
+    new: true,
+    runValidators: true,
+  });
+  if (!tour){
+    return next(new AppError('No tour found with that ID',404));
   }
-};
+  res.status(200).json({
+    status: 'success',
 
-exports.deleteTour = async (req, res) => {
-  try {
-    const tour = await Tour.findByIdAndDelete(req.params.id);
-    res.status(204).json({
-      status: 'success',
+    data: {
+      tours: tour,
+    },
+  });
+});
 
-      data: null,
-    });
-  } catch (error) {
-    res.status(400).json({
-      status: 'Fali',
-      message: error.message,
-    });
+exports.deleteTour = catchAsync(async (req, res,next) => {
+  const tour = await Tour.findByIdAndDelete(req.params.id);
+  if (!tour){
+    return next(new AppError('No tour found with that ID',404));
   }
-};
-exports.getTourStats = async (req, res) => {
-  try {
-    /* Hàm aggregate của Mongoose cho phép bạn thực hiện các phép toán 
-     tổng hợp (aggregation) trên các tài liệu trong collection Tour.*/
-    const stats = await Tour.aggregate([
-      // $match: Chỉ lấy các tài liệu có ratingsAverage lớn hơn hoặc bằng 4.5.
-      { $match: { ratingsAverage: { $gte: 4.5 } } },
-      {
-        // $group: Gom nhóm các tài liệu theo difficulty (độ khó của tour), với một số phép toán tổng hợp:
-        $group: {
-          _id: { $toUpper: '$difficulty' },
-          numTours: { $sum: 1 },
-          numRatings: { $sum: '$ratingsQuantity' },
-          avgRating: { $avg: '$ratingsAverage' },
-          avgPrice: { $avg: '$price' },
-          minPrice: { $min: '$price' },
-          maxPrice: { $max: '$price' },
-        },
-      },
-      {
-        // $sort: Sắp xếp các nhóm theo giá trung bình (avgPrice) tăng dần.
-        $sort: { avgPrice: 1 },
-      },
+  res.status(204).json({
+    status: 'success',
 
-      // {
-      //   // $match: Lọc ra các nhóm có _id khác 'EASY'.
-      //   $match: { _id: { $ne: 'EASY' } } },
-    ]);
-    res.status(200).json({
-      status: 'success',
-
-      data: {
-        stats,
+    data: null,
+  });
+});
+exports.getTourStats = catchAsync(async (req, res,next) => {
+  /* Hàm aggregate của Mongoose cho phép bạn thực hiện các phép toán 
+      tổng hợp (aggregation) trên các tài liệu trong collection Tour.*/
+  const stats = await Tour.aggregate([
+    // $match: Chỉ lấy các tài liệu có ratingsAverage lớn hơn hoặc bằng 4.5.
+    { $match: { ratingsAverage: { $gte: 4.5 } } },
+    {
+      // $group: Gom nhóm các tài liệu theo difficulty (độ khó của tour), với một số phép toán tổng hợp:
+      $group: {
+        _id: { $toUpper: '$difficulty' },
+        numTours: { $sum: 1 },
+        numRatings: { $sum: '$ratingsQuantity' },
+        avgRating: { $avg: '$ratingsAverage' },
+        avgPrice: { $avg: '$price' },
+        minPrice: { $min: '$price' },
+        maxPrice: { $max: '$price' },
       },
-    });
-  } catch (error) {
-    res.status(400).json({
-      status: 'Fali',
-      message: error.message,
-    });
-  }
-};
+    },
+    {
+      // $sort: Sắp xếp các nhóm theo giá trung bình (avgPrice) tăng dần.
+      $sort: { avgPrice: 1 },
+    },
 
-exports.getMothlyPlan = async (req, res) => {
+    // {
+    //   // $match: Lọc ra các nhóm có _id khác 'EASY'.
+    //   $match: { _id: { $ne: 'EASY' } } },
+  ]);
+  res.status(200).json({
+    status: 'success',
+
+    data: {
+      stats,
+    },
+  });
+});
+
+exports.getMothlyPlan = async (req, res,next) => {
   try {
     // lấy năm từ tham số URL
     const year = req.params.year;
     const plan = await Tour.aggregate([
-      { 
+      {
         /* tách mảng [startDates] thành các các tài liệu riêng biệt.
          Mỗi giá trị trong mảng startDates sẽ tạo ra một tài liệu mới với các trường 
         giống như tài liệu ban đầu, ngoại trừ startDates sẽ chỉ chứa một giá trị duy nhất từ mảng.
         */
-        $unwind: '$startDates' 
+        $unwind: '$startDates',
       },
       {
         $match: {

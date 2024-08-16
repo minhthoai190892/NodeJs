@@ -9,10 +9,12 @@ const app = express();
 // phần mềm trung gian của express
 // ? dùng để chuyển đổi nội dung json sang object javascript
 app.use(express.json());
+app.use(express.static(`${__dirname}/public`))
 
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
+
 
 // Routes
 app.use('/api/v1/tours', tourRouter);
@@ -26,7 +28,7 @@ app.all('*', function (req, res, next) {
   // const err = new Error(`Can't find ${req.originalUrl} on the server`);
   // err.status = 'Fail';
   // err.statusCode = 404;
-  next(new AppError(`Can't find ${req.originalUrl} on the server`,404));
+  next(new AppError(`Can't find ${req.originalUrl} on the server`, 404));
 });
 app.use(globalErrorHandle);
 module.exports = app;
