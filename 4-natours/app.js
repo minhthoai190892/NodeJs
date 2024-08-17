@@ -9,12 +9,16 @@ const app = express();
 // phần mềm trung gian của express
 // ? dùng để chuyển đổi nội dung json sang object javascript
 app.use(express.json());
-app.use(express.static(`${__dirname}/public`))
+app.use(express.static(`${__dirname}/public`));
 
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
+app.use((req, res, next) => {
+  req.requestTime = new Date().toISOString();
 
+  next();
+});
 
 // Routes
 app.use('/api/v1/tours', tourRouter);

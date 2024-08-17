@@ -1,10 +1,15 @@
 const express = require('express');
 const userController = require('../controllers/userController');
+const authController = require('../controllers/authController');
 const router = express.Router();
-router.param('id', (req, res, next, value) => {
-  console.log(`user id: ${value}`);
-  next();
-});
+
+
+// router.param('id', (req, res, next, value) => {
+//   console.log(`user id: ${value}`);
+//   next();
+// });
+router.post('/signup', authController.signup);
+router.post('/login', authController.login);
 router
   .route('/')
   .get(userController.getAlluUsers)
