@@ -1,3 +1,5 @@
+const { promisify } = require('util');
+
 const User = require('../models/userModel');
 const catchAsync = require('../utils/catchAsync');
 const jwt = require('jsonwebtoken');
@@ -60,14 +62,41 @@ exports.protect = catchAsync(async (req, res, next) => {
   }
   if (!token) {
     return next(
-    new  AppError('You are not logged in! Please log in to get access.', 401)
+      new AppError('You are not logged in! Please log in to get access.', 401)
     );
   }
   // xác nhận mã token
+  /**
+   * Dòng mã này giải mã token và kiểm tra tính hợp lệ của nó bằng cách sử dụng khóa bí mật (JWT_SECRET)
+   * promisify - hàm từ thư viện util để chuyển đổi hàm jwt.verify thành một hàm trả về Promise
+   * jwt.verify - Hàm jwt.verify từ thư viện jsonwebtoken được sử dụng để giải mã và
+   * xác minh tính hợp lệ của một JWT. Nó kiểm tra xem token có hợp lệ và chưa hết hạn hay không dựa trên khóa bí mật (JWT_SECRET).
+   *
+   */
+  const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
+  // console.log('decoded',decoded);
 
   // kiểm tra user có còn tồn tại hay không
 
-  // kiểm tra user có thay đổi password sau khi mã thông báo đã được phát hành hay không
+  const currentUser = await User.findById(decoded.id);
 
+  if (!currentUser) {
+    return next(
+      new AppError(
+        'The token belonging to this token user does no longer exist.',
+        401
+      )
+    );
+  }
+  // kiểm tra user có thay đổi password sau khi mã thông báo đã được phát hành hay không
+  console.log(currentUser.changedPasswordAfter(decoded.iat));
+
+  if (currentUser.changedPasswordAfter(decoded.iat)) {
+    return next(
+      new AppError('User recently changed password! Please login again.', 401)
+    );
+  }
+  // cấp quyền truy cập vào tuyến đường được bảo vệ
+  req.user = currentUser;
   next();
 });

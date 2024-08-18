@@ -35,6 +35,7 @@ const userSchema = new mongoose.Schema({
       message: 'Passwords do not match',
     },
   },
+  passwordChangedAt: Date,
 });
 // ! middleware mongoose
 // để thực hiện một số thao tác trước khi một tài liệu User được lưu vào cơ sở dữ liệu
@@ -61,6 +62,26 @@ userSchema.methods.correctPassword = async function (
   userPassword
 ) {
   return await bcrypt.compare(candidatePassword, userPassword);
+};
+/**
+ *  Phương thức kiểm tra người dùng có thay đổi password không
+ * @param {*} JWTTimestamp - nhận ngày tạo token 
+ * @returns true or false
+ */
+
+userSchema.methods.changedPasswordAfter =  function (JWTTimestamp) {
+  // kiểm tra passwordChangedAt này có tồn tại không
+  if (this.passwordChangedAt) {
+    // chuyển đổi Date thành timestamps
+    const changedTimestamp = parseInt(this.passwordChangedAt.getTime()/1000,10);
+    // console.log(changedTimestamp, JWTTimestamp);
+    // kiểm tra ngày tạo token và ngày thay đổi password
+    // console.log(JWTTimestamp<changedTimestamp);
+    
+    return JWTTimestamp<changedTimestamp
+    
+  }
+  return false;
 };
 const User = mongoose.model('User', userSchema);
 module.exports = User;
