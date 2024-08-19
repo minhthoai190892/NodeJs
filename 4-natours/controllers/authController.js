@@ -1,9 +1,10 @@
 const { promisify } = require('util');
-
+const crypto = require('crypto');
 const User = require('../models/userModel');
 const catchAsync = require('../utils/catchAsync');
 const jwt = require('jsonwebtoken');
 const AppError = require('../utils/appError');
+const sendEmail = require('../utils/email');
 /**
  * hàm để tạo một JWT cho người dùng khi họ đăng ký hoặc đăng nhập
  * @param {*} id - tham số id của người dùng thường là id từ mongodb
@@ -99,4 +100,97 @@ exports.protect = catchAsync(async (req, res, next) => {
   // cấp quyền truy cập vào tuyến đường được bảo vệ
   req.user = currentUser;
   next();
+});
+/**
+ * Phương thức kiểm tra role của người dùng
+ * @param  {...any} roles - nhận danh sách role
+ * @returns
+ */
+exports.restricTo = (...roles) => {
+  return (req, res, next) => {
+    // roles = ['admin', 'lead-guide'] role = 'user'
+    // ! kiểm tra người dùng có phải là 'admin', 'lead-guide' hay không
+    if (!roles.includes(req.user.role)) {
+      return next(
+        new AppError('You do not have permission to perform this action', 403)
+      );
+    }
+    next();
+  };
+};
+
+exports.forgotPassword = catchAsync(async (req, res, next) => {
+  // 1) Lấy người dùng dựa trên email đã gửi
+  const user = await User.findOne({ email: req.body.email });
+  // kiểm tra người dùng có tồn tại không
+  if (!user) {
+    return next(new AppError('There is no user with that email address.', 404));
+  }
+
+  // 2) Tạo token đặt lại mật khẩu ngẫu nhiên
+  const resetToken = user.createPasswordResetToken();
+  // lưu người dùng
+  await user.save({ validateBeforeSave: false });
+
+  // 3) Gửi token tới email của người dùng
+  const resetURL = `${req.protocol}://${req.get(
+    'host'
+  )}/api/v1/users/resetPassword/${resetToken}`;
+  // thông báo trong mailstrap
+  const message = `Forgot your password? Submit a PATCH request with your new password and passwordConfirm to: ${resetURL}.\nIf you didn't forget your password, please ignore this email!`;
+
+  try {
+    // thực hiện gửi mail
+    await sendEmail({
+      email: user.email,
+      subject: 'Your password reset token (valid for 10 min)',
+      message,
+    });
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Token sent to email!',
+    });
+  } catch (err) {
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    return next(
+      new AppError('There was an error sending the email. Try again later!'),
+      500
+    );
+  }
+});
+
+exports.resetPassword = catchAsync(async (req, res, next) => {
+  //! lấy người dùng dựa trên mã thông báo
+  const hashedToken = crypto
+    .createHash('sha256')
+    .update(req.params.token)
+    .digest('hex');
+  // tìm người dùng bằng passwordResetToken
+  const user = await User.findOne({
+    passwordResetToken: hashedToken,
+    passwordResetExpires: { $gt: Date.now() },
+  });
+  console.log(user);
+
+  //! nếu mã thông báo chưa hết hạn và có người dùng thì đặt lại password
+  if (!user) {
+    return next(new AppError('Token is invalid or has expired', 400));
+  }
+  user.password = req.body.password;
+  user.passwordConfirm = req.body.passwordConfirm;
+  user.passwordResetToken = undefined;
+  user.passwordResetExpires = undefined;
+  await user.save();
+  //! cập nhật lại thuộc tính passwordChangedAt cho người dùng
+  //! đăng nhập người dùng, gửi jwt
+  // ! nếu tất cả đúng thì gửi kết quả
+  const token = signToken(user._id);
+  res.status(200).json({
+    status: 'success',
+    token: token,
+  });
 });

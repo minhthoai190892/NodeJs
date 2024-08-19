@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const validator = require('validator');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -12,7 +13,6 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Please provide your email'],
     unique: true,
     lowercase: true,
-    select: false,
   },
   photo: String,
   password: {
@@ -36,6 +36,13 @@ const userSchema = new mongoose.Schema({
     },
   },
   passwordChangedAt: Date,
+  role: {
+    type: String,
+    enum: ['user', 'guide', 'lead-guide', 'admin'],
+    default: 'user',
+  },
+  passwordResetToken: String,
+  passwordResetExpires: Date,
 });
 // ! middleware mongoose
 // để thực hiện một số thao tác trước khi một tài liệu User được lưu vào cơ sở dữ liệu
@@ -51,6 +58,14 @@ userSchema.pre('save', async function (next) {
   this.passwordConfirm = undefined;
   next();
 });
+userSchema.pre('save', async function (next) {
+  if (!this.isModified('password') || this.isNew) {
+    return next();
+  }
+  this.passwordChangedAt = Date.now()-1000;
+  next();
+});
+
 /**
  * Phương thức so sánh password
  * @param {*} candidatePassword -  password mà người dùng đăng nhập
@@ -65,23 +80,49 @@ userSchema.methods.correctPassword = async function (
 };
 /**
  *  Phương thức kiểm tra người dùng có thay đổi password không
- * @param {*} JWTTimestamp - nhận ngày tạo token 
+ * @param {*} JWTTimestamp - nhận ngày tạo token
  * @returns true or false
  */
 
-userSchema.methods.changedPasswordAfter =  function (JWTTimestamp) {
+userSchema.methods.changedPasswordAfter = function (JWTTimestamp) {
   // kiểm tra passwordChangedAt này có tồn tại không
   if (this.passwordChangedAt) {
     // chuyển đổi Date thành timestamps
-    const changedTimestamp = parseInt(this.passwordChangedAt.getTime()/1000,10);
+    const changedTimestamp = parseInt(
+      this.passwordChangedAt.getTime() / 1000,
+      10
+    );
     // console.log(changedTimestamp, JWTTimestamp);
     // kiểm tra ngày tạo token và ngày thay đổi password
     // console.log(JWTTimestamp<changedTimestamp);
-    
-    return JWTTimestamp<changedTimestamp
-    
+
+    return JWTTimestamp < changedTimestamp;
   }
   return false;
+};
+/**
+ * Hàm tạo một token ngẫu nhiên dùng để thay đổi mật khẩu
+ *
+ * @returns - trả về một token chưa được mã hóa dùng để gửi cho người dùng thông qua email
+ */
+userSchema.methods.createPasswordResetToken = function () {
+  // tạo một token ngẫu nhiên
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  // mã hóa token bằng thuật toán sha256 và được lưu vào cơ sở dữ liệu
+  this.passwordResetToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex');
+  /* 
+    tạo thời gian mã token hết hạn(10p) và được lưu vào cơ sở dữ liệu
+     Date.now() - lấy thời gian hiện tại tính bằng milliseconds
+     10 * 60 * 1000- đây là số milliseconds tương ứng với 10p
+    */
+
+  this.passwordResetExpires = Date.now() + 10 * 60 * 1000;
+  console.log({ resetToken }, this.passwordResetToken);
+
+  return resetToken;
 };
 const User = mongoose.model('User', userSchema);
 module.exports = User;
